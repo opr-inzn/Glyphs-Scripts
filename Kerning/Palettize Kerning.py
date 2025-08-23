@@ -1,111 +1,150 @@
-# MenuTitle: Palettize Kerning
-__doc__="""
-To be used with fontTools.
-
-Reduces the number of different kerning values in the font, similar to a GIF or PNG-8 color palette.
-
-This is lossy but should be nearly imperceptible. max_tweak_relative can be used to set the amount by which the kerning values may deviate from the source. The approach is a bit more refined than simple quantization and usually leads to smaller average deviation.
-
-The aim is to allow for better compression in webfonts and reduce the webfont file size. We achieve around 2%–4% size reduction for our woff/woff2 fonts.
+# MenuTitle: Compress Kerning
+# -*- coding: utf-8 -*-
+__doc__ = """
+Reduces the number of different kerning values in the current Glyphs file,
+similar to a GIF/PNG-8 palette. This is lossy but nearly imperceptible,
+and helps reduce webfont size. 
+Original script by Just Another Foundry for fontTools.
 """
 
-#!/usr/bin/python3
+from GlyphsApp import *
 
-import fontTools.ttLib
+def isValidKerningKey(font, key):
+    """Check if kerning key is valid (glyph name or group)."""
+    if key is None:
+        return False
+    if key.startswith("@"):  # kerning group
+        return True
+    if font.glyphs[key]:  # glyph name exists
+        return True
+    return False
 
 
-# Reduces the number of different kerning values in the font,
-# similar to a GIF or PNG-8 color palette.
+def collectKerningValues(font):
+    """Collect all kerning values from the font."""
+    values = []
+    pairs = []
+    for master in font.masters:
+        kerningDict = font.kerning[master.id]
+        if not kerningDict:
+            continue
+        for left, rightDict in kerningDict.items():
+            if not rightDict:
+                continue
+            for right, value in rightDict.items():
+                if value is not None:
+                    values.append(value)
+                    pairs.append((master.id, left, right, value))
+    return values, pairs
 
-# This is lossy but should be nearly imperceptible.
-# The aim is to allow for better compression in webfonts and reduce the webfont file size.
 
-# font is a fontTools.ttLib.TTFont object
-# max_tweak_relative defines the maximum any kern value may be changed (relative to the UPM)
-def palettize_kerning( font, max_tweak_relative = 0.003 ):
-	max_tweak = max_tweak_relative * font['head'].unitsPerEm
-	if max_tweak < 1:
-		return
-	# collect and delete valueRecords
-	allValueRecords = []
-	try:
-		featureList = font['GPOS'].table.FeatureList
-	except KeyError:
-		return
-	lookups = font['GPOS'].table.LookupList.Lookup
-	for feature_indx in range( len( featureList.FeatureRecord ) ):
-		if featureList.FeatureRecord[feature_indx].FeatureTag == 'kern':
-			feat = featureList.FeatureRecord[feature_indx].Feature
-			for lookup_indx in range( feat.LookupCount ):
-				lookupListIndex = feat.LookupListIndex[lookup_indx]
-				for subtable_indx in range( len( lookups[lookupListIndex].SubTable ) -1, -1, -1 ):
-					subtable = lookups[lookupListIndex].SubTable[subtable_indx]
-					if subtable.Format == 1:
-						# glyph-glyph kerning
-						for pset_index in range( len( subtable.PairSet ) -1, -1, -1 ):
-							pairSet = subtable.PairSet[pset_index]
-							for pv_index in range( len( pairSet.PairValueRecord ) -1, -1, -1 ):
-								valueRecord = pairSet.PairValueRecord[pv_index].Value1
-								if abs( valueRecord.XAdvance ) > max_tweak:
-									allValueRecords.append( valueRecord )
-								else:
-									del pairSet.PairValueRecord[pv_index]
-					else:
-						# class kerning
-						for class1_index in range( subtable.Class1Count -1, -1, -1 ):
-							class1Record = subtable.Class1Record[class1_index]
-							for class2_index in range( subtable.Class2Count -1, -1, -1 ):
-								valueRecord = class1Record.Class2Record[class2_index].Value1
-								if abs( valueRecord.XAdvance ) > max_tweak:
-									allValueRecords.append( valueRecord )
-								else:
-									valueRecord.XAdvance = 0
-					# TODO: delete unused classes
-				# TODO: would sorting the kerning values lead to further improvements in compression?
-	# create sorted unique list of all kerning values
-	allValues = list( { valueRecord.XAdvance for valueRecord in allValueRecords } )
-	allValues.sort()
-	# set up spans
-	spans = []
-	max_span = int( round( 2.0 * max_tweak + 1 ) )
-	lower = allValues[0]
-	for v in allValues:
-		if v < lower + max_span:
-			upper = v
-		else:
-			spans.append( [ int( lower ), int( upper ) ] )
-			lower = v
-			upper = v
-	spans.append( [ int( lower ), int( upper ) ] )
-	# equalize adjacent spans
-	for i in range( len( spans ) - 1 ):
-		# middle of the outer limits of the two spans
-		middle = ( spans[i][0] + spans[i+1][1] ) // 2 # always rounds down
-		if spans[i][1] > middle:
-			# spans[i] is shortened
-			spans[i][1] = middle
-			# spans[i] might be shortened further if there are empty slots
-			while spans[i][1] > spans[i][0] and spans[i][1] not in allValues:
-				spans[i][1] -= 1
-			# spans[i+1] is extended
-			spans[i+1][0] = middle + 1
-			# spans[i+1] might be shortened
-			while spans[i+1][0] < spans[i+1][1] and spans[i+1][0] not in allValues:
-				spans[i+1][0] += 1
-		else:
-			# we know that spans[i+1] is never extended
-			assert( spans[i+1][0] >= middle + 1 )
-	# set up the mapping
-	mapping = {}
-	for span in spans:
-		middle = int( 0.5 * ( span[0] + span[1] ) ) # always rounds towards zero
-		for i in range( span[0], span[1] + 1 ):
-			mapping[i] = middle
-	# apply the actual palettization
-	for valueRecord in allValueRecords:
-		valueRecord.XAdvance = mapping[valueRecord.XAdvance]
+def palettize_kerning(font, max_tweak_relative=0.003):
+    upm = font.upm
+    max_tweak = max_tweak_relative * upm
+    if max_tweak < 1:
+        return
 
-# usage example
-font = fontTools.ttLib.TTFont( 'source.ttf' )
-palettize_kerning( font )
-font.save( 'palettized.ttf' )
+    # Collect values before
+    beforeValues, beforePairs = collectKerningValues(font)
+    beforeUnique = len(set(beforeValues))
+
+    # Collect all kerning values for processing
+    allValueRecords = []  # store (masterID, left, right, value)
+    for master in font.masters:
+        kerningDict = font.kerning[master.id]
+        if not kerningDict:
+            continue
+        for left, rightDict in kerningDict.items():
+            if not rightDict:
+                continue
+            for right, value in rightDict.items():
+                if value is not None:
+                    if abs(value) > max_tweak:
+                        allValueRecords.append((master.id, left, right, value))
+                    else:
+                        # too small, set to zero if valid
+                        if isValidKerningKey(font, left) and isValidKerningKey(
+                            font, right
+                        ):
+                            font.setKerningForPair(master.id, left, right, 0)
+
+    if not allValueRecords:
+        print("⚠️ No kerning values found to process.")
+        return
+
+    # Create sorted unique list of all kerning values
+    allValues = sorted({v for (_, _, _, v) in allValueRecords})
+
+    # Set up spans
+    spans = []
+    max_span = int(round(2.0 * max_tweak + 1))
+    lower = allValues[0]
+    for v in allValues:
+        if v < lower + max_span:
+            upper = v
+        else:
+            spans.append([int(lower), int(upper)])
+            lower = v
+            upper = v
+    spans.append([int(lower), int(upper)])
+
+    # Equalize adjacent spans
+    for i in range(len(spans) - 1):
+        middle = (spans[i][0] + spans[i + 1][1]) // 2
+        if spans[i][1] > middle:
+            spans[i][1] = middle
+            while spans[i][1] > spans[i][0] and spans[i][1] not in allValues:
+                spans[i][1] -= 1
+            spans[i + 1][0] = middle + 1
+            while (
+                spans[i + 1][0] < spans[i + 1][1]
+                and spans[i + 1][0] not in allValues
+            ):
+                spans[i + 1][0] += 1
+        else:
+            assert spans[i + 1][0] >= middle + 1
+
+    # Build mapping
+    mapping = {}
+    for span in spans:
+        middle = int(0.5 * (span[0] + span[1]))
+        for i in range(span[0], span[1] + 1):
+            mapping[i] = middle
+
+    # Apply mapping
+    changed = 0
+    for (masterID, left, right, value) in allValueRecords:
+        if value in mapping:
+            if isValidKerningKey(font, left) and isValidKerningKey(font, right):
+                newValue = mapping[value]
+                if newValue != value:
+                    changed += 1
+                font.setKerningForPair(masterID, left, right, newValue)
+
+    # Collect values after
+    afterValues, afterPairs = collectKerningValues(font)
+    afterUnique = len(set(afterValues))
+
+    # Estimate size savings (rough: assume ~6 bytes per pair + 2 per unique value)
+    beforeSize = len(beforePairs) * 6 + beforeUnique * 2
+    afterSize = len(afterPairs) * 6 + afterUnique * 2
+    savings = beforeSize - afterSize
+    percent = (savings / beforeSize * 100) if beforeSize > 0 else 0
+
+    # Report
+    print("✅ Palettize Kerning Report")
+    print(f"  Kerning pairs processed: {len(beforePairs)}")
+    print(f"  Unique values before: {beforeUnique}")
+    print(f"  Unique values after:  {afterUnique}")
+    print(f"  Changed pairs: {changed}")
+    print(f"  Estimated GPOS size before: {beforeSize} bytes")
+    print(f"  Estimated GPOS size after:  {afterSize} bytes")
+    print(f"  Estimated savings: {savings} bytes ({percent:.1f}%)")
+
+
+# Run on current font
+font = Glyphs.font
+if font:
+    font.disableUpdateInterface()
+    palettize_kerning(font)
+    font.enableUpdateInterface()
