@@ -16,7 +16,7 @@ def myround(x, base=5):
 
 class RoundKerningDialog(object):
     def __init__(self):
-        self.w = Window((300, 140), "Round Kerning to 5")
+        self.w = Window((300, 100), "Round Kerning to 5")
 
         self.w.text = TextBox((15, 12, -15, 20), "Remove pairs smaller than:")
         self.w.minValue = EditText(
