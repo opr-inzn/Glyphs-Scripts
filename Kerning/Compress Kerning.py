@@ -1,11 +1,7 @@
 # MenuTitle: Compress Kerning
 # -*- coding: utf-8 -*-
 __doc__ = """
-Reduces the number of different kerning values in the current Glyphs file,
-similar to a GIF/PNG-8 palette. This is lossy but nearly imperceptible,
-and helps reduce webfont size. 
-Original script by Just Another Foundry for fontTools.
-"""
+Reduces the number of different kerning values in the current Glyphs file, similar to a GIF/PNG-8 palette. This is lossy but nearly imperceptible, and helps reduce webfont size. Original script by Just Another Foundry for fontTools."""
 
 from GlyphsApp import *
 
@@ -132,7 +128,7 @@ def palettize_kerning(font, max_tweak_relative=0.003):
     percent = (savings / beforeSize * 100) if beforeSize > 0 else 0
 
     # Report
-    print("✅ Palettize Kerning Report")
+    print("✅ Compress Kerning Report")
     print(f"  Kerning pairs processed: {len(beforePairs)}")
     print(f"  Unique values before: {beforeUnique}")
     print(f"  Unique values after:  {afterUnique}")

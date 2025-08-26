@@ -2,8 +2,7 @@
 # encoding: utf-8
 
 __doc__ = """
-Rounds the kerning values to units of 5.
-Original script by Wei Huang.
+Rounds the kerning values to units of 5. Original script by Wei Huang.
 """
 
 from GlyphsApp import *
