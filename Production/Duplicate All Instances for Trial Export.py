@@ -46,9 +46,6 @@ if font.instances:
         full_name = re.sub(r' +', ' ', full_name)
         trial_family = re.sub(r' +', ' ', trial_family)
         
-        # Set custom parameter for family name
-        new_instance.customParameters["familyName"] = trial_family
-        
         # Set localized family name
         new_instance.setProperty_value_languageTag_("familyNames", trial_family, None)
         

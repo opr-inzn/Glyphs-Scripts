@@ -1,7 +1,7 @@
-# MenuTitle: Check Outline Errors
+# MenuTitle: Outline Checker
 # -*- coding: utf-8 -*-
 """
-Check for outline errors in selected glyphs and report them in the macro panel.
+Check for outline errors in all glyphs across all masters and report them in the macro panel.
 Based on RedArrow-Glyphs by Jens Kutilek.
 """
 
@@ -165,7 +165,7 @@ def check_stray_points(layer):
     return errors
 
 
-def check_layer(layer, glyph_name):
+def check_layer(layer, glyph_name, master_name):
     """Run all checks on a layer and return errors."""
     all_errors = []
 
@@ -197,7 +197,7 @@ def check_layer(layer, glyph_name):
 
 
 def main():
-    """Main function to check selected glyphs."""
+    """Main function to check all glyphs in all masters."""
     # Open and bring Macro panel to front
     Glyphs.clearLog()
     Glyphs.showMacroWindow()
@@ -208,39 +208,48 @@ def main():
         print("❌ No font open")
         return
 
-    selected_layers = font.selectedLayers
-
-    if not selected_layers:
-        print("❌ No glyphs selected")
-        return
-
     print("=" * 60)
-    print("OUTLINE ERROR REPORT")
+    print("OUTLINE ERROR REPORT - ALL GLYPHS, ALL MASTERS")
     print("=" * 60)
     print()
 
     total_errors = 0
     glyphs_with_errors = 0
+    total_glyphs_checked = 0
 
-    for layer in selected_layers:
-        glyph = layer.parent
+    # Iterate through all glyphs
+    for glyph in font.glyphs:
         glyph_name = glyph.name
+        glyph_has_errors = False
+        
+        # Check each master
+        for master in font.masters:
+            master_name = master.name
+            layer = glyph.layers[master.id]
+            
+            # Skip empty layers
+            if not layer.paths:
+                continue
+            
+            total_glyphs_checked += 1
+            errors = check_layer(layer, glyph_name, master_name)
 
-        errors = check_layer(layer, glyph_name)
-
-        if errors:
-            glyphs_with_errors += 1
-            total_errors += len([e for e in errors if e.startswith("    •")])
-            print(f"🔴 {glyph_name}")
-            for error in errors:
-                print(error)
-            print()
-        else:
-            print(f"✅ {glyph_name} - No errors found")
+            if errors:
+                if not glyph_has_errors:
+                    print(f"🔴 {glyph_name}")
+                    glyph_has_errors = True
+                    glyphs_with_errors += 1
+                
+                print(f"  Master: {master_name}")
+                total_errors += len([e for e in errors if e.startswith("    •")])
+                for error in errors:
+                    print(error)
+                print()
 
     print("=" * 60)
     print(f"Summary: {glyphs_with_errors} glyph(s) with errors")
     print(f"Total issues: {total_errors}")
+    print(f"Total layers checked: {total_glyphs_checked}")
     print("=" * 60)
 
 
