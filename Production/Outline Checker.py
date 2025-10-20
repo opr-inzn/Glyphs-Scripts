@@ -25,6 +25,71 @@ def check_extremes(layer):
     return errors
 
 
+def check_inflections(layer):
+    """Check for curve inflections (S-curves)."""
+    errors = []
+    for path in layer.paths:
+        nodes = path.nodes
+        for i, node in enumerate(nodes):
+            if node.type == "curve":
+                # Get the four points that define this curve segment
+                p0 = nodes[i - 3].position
+                p1 = nodes[i - 2].position
+                p2 = nodes[i - 1].position
+                p3 = node.position
+                
+                # Check for inflection using the cross product method
+                # An inflection occurs when the curve changes curvature direction
+                if has_inflection(p0, p1, p2, p3):
+                    mid_x = (p0.x + p3.x) / 2
+                    mid_y = (p0.y + p3.y) / 2
+                    errors.append(
+                        f"Curve inflection near ({mid_x:.0f}, {mid_y:.0f})"
+                    )
+    return errors
+
+
+def has_inflection(p0, p1, p2, p3):
+    """
+    Detect inflection point in a cubic Bezier curve.
+    Uses the cross product method to detect curvature changes.
+    """
+    # Calculate vectors for the control points
+    ax = -p0.x + 3 * p1.x - 3 * p2.x + p3.x
+    ay = -p0.y + 3 * p1.y - 3 * p2.y + p3.y
+    bx = 3 * p0.x - 6 * p1.x + 3 * p2.x
+    by = 3 * p0.y - 6 * p1.y + 3 * p2.y
+    cx = -3 * p0.x + 3 * p1.x
+    cy = -3 * p0.y + 3 * p1.y
+    
+    # Calculate coefficients for inflection equation
+    # Inflection when: a × b' - a' × b = 0
+    # This simplifies to a quadratic equation: At² + Bt + C = 0
+    A = ax * by - ay * bx
+    B = ax * cy - ay * cx
+    C = bx * cy - by * cx
+    
+    # If A is effectively zero, check linear case
+    if abs(A) < 0.001:
+        if abs(B) < 0.001:
+            return False
+        t = -C / B
+        return 0 < t < 1
+    
+    # Solve quadratic equation
+    discriminant = B * B - 4 * A * C
+    
+    if discriminant < 0:
+        return False
+    
+    sqrt_discriminant = discriminant ** 0.5
+    t1 = (-B + sqrt_discriminant) / (2 * A)
+    t2 = (-B - sqrt_discriminant) / (2 * A)
+    
+    # Check if any solution is in the valid range (0, 1)
+    return (0 < t1 < 1) or (0 < t2 < 1)
+
+
 def check_path_direction(layer):
     """Check if path directions are correct."""
     errors = []
@@ -112,6 +177,7 @@ def check_layer(layer, glyph_name):
         ("Path Direction", check_path_direction),
         ("Overlaps", check_overlaps),
         ("Missing Extremes", check_extremes),
+        ("Curve Inflections", check_inflections),
         ("Zero Handles", check_zero_handles),
         ("Duplicate Nodes", check_duplicate_nodes),
         ("Stray Points", check_stray_points),
