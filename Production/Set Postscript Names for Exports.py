@@ -42,6 +42,7 @@ for instance in font.instances:
     full_name = re.sub(r' +', ' ', full_name)
 
     # Set postscriptFullNames at Default language (use None for "Default")
+    # instance.setProperty_value_languageTag_("familyNames", family_name, None)
     instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
     
     # Clean up fontName - replace spaces with hyphens and remove consecutive hyphens
