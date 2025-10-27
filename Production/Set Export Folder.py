@@ -1,7 +1,7 @@
-# MenuTitle: Set Postscript Names for Exports
+# MenuTitle: Set Export Folder
 # -*- coding: utf-8 -*-
 __doc__ = """
-Sets Postscript names for all instances, preferring localized family names.
+Sets Export Folder for all instances, preferring localized family names.
 """
 
 import unicodedata
@@ -40,13 +40,11 @@ for instance in font.instances:
     
     # Clean up multiple spaces
     full_name = re.sub(r' +', ' ', full_name)
-
-    # Set postscriptFullNames at Default language (use None for "Default")
-    instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
     
-    # Clean up fontName - replace spaces with hyphens and remove consecutive hyphens
-    font_name = full_name.replace(" ", "-")
-    font_name = re.sub(r'-+', '-', font_name)  # Replace multiple hyphens with single hyphen
-    instance.fontName = font_name
+    try:
+        instance.customParameters["Export Folder"] = family_name
+    except Exception:
+        # In case CustomParametersProxy behaves differently in some builds:
+        instance.setCustomParameter_forKey_(family_name, "Export Folder")
 
-print("✅ postscriptFullNames set for all exports, using localized family names where available.")
+print("✅ Export Folder set for all instances, using localized family names where available.")

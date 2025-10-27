@@ -41,6 +41,16 @@ def is_trial_instance(inst):
         pass
     return False
 
+def clean_family_name(name):
+    """Remove version numbers, LAB tags, and digits from family name."""
+    if not name:
+        return ""
+    # Remove version-like parts (v0.7, V1, v1.0), LAB variants, and standalone digits
+    name = re.sub(r'(?i)(?:v\d+(?:\.\d+)?|lab\d*|\d+)', '', name)
+    # Remove stray punctuation or hyphens left behind
+    name = re.sub(r'[\s\-\._]+$', '', name).strip()
+    return name
+
 if font.instances:
     all_instances = list(font.instances)
     created_count = 0
@@ -58,7 +68,7 @@ if font.instances:
 
     for instance in originals:
         base_family = get_family_name(instance) or font.familyName
-        base_family = re.sub(r'\d+', '', base_family).strip()
+        base_family = clean_family_name(base_family)
         trial_family = f"{base_family} Unlicensed Trial"
         style_name = instance.name or ""
         full_name = f"{trial_family} {style_name}".strip()
@@ -76,6 +86,8 @@ if font.instances:
 
         font_name = re.sub(r'-+', '-', full_name.replace(" ", "-"))
         new_instance.fontName = font_name
+        
+        new_instance.customParameters["Export Folder"] = trial_family
 
         font.instances.append(new_instance)
         existing_keys.add(trial_key)

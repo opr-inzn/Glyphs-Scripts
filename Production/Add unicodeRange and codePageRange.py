@@ -180,27 +180,56 @@ cp_results  = codepage_coverage(codepoints, CODEPAGES)
 uni_bits = [bit for bit, _, pct in uni_results if pct >= UNICODE_THRESHOLD]
 cp_bits  = [bit for bit, _, pct in cp_results  if pct >= CODEPAGE_THRESHOLD]
 
-# merge or overwrite
-if MERGE_EXISTING:
-    prev_u = list(font.customParameters.get("unicodeRanges") or [])
-    prev_c = list(font.customParameters.get("codePageRanges") or [])
-    uni_bits = sorted(set(prev_u) | set(uni_bits))
-    cp_bits  = sorted(set(prev_c) | set(cp_bits))
+def codepage_id_for_bit(bit):
+    return CODEPAGES[bit][0].split()[0]
 
-font.customParameters["unicodeRanges"] = uni_bits
-font.customParameters["codePageRanges"] = cp_bits
+cp_values = [codepage_id_for_bit(b) for b in cp_bits]
+
+# ---------- merge with existing ----------
+if MERGE_EXISTING:
+    try:
+        prev_uni = list(font.customParameters.get("unicodeRanges") or [])
+        prev_cp  = list(font.customParameters.get("codePageRanges") or [])
+    except Exception:
+        prev_uni, prev_cp = [], []
+    prev_uni_clean = [int(str(u).lstrip("!")) for u in prev_uni]
+    prev_cp_clean  = [str(v).lstrip("!") for v in prev_cp]
+    uni_bits = sorted(set(prev_uni_clean) | set(uni_bits))
+    cp_values = sorted(set(prev_cp_clean) | set(cp_values))
+
+# ---------- ensure active GSCustomParameters ----------
+def ensure_active_param(name, value):
+    """Create or update a GSCustomParameter and ensure it’s active."""
+    existing = None
+    for cp in font.customParameters:
+        if cp.name == name:
+            existing = cp
+            break
+
+    if existing:
+        existing.value = value
+        existing.active = True
+        print(f"🔓 Enabled existing {name} parameter.")
+    else:
+        new_param = GSCustomParameter(name, value)
+        new_param.active = True
+        font.customParameters.append(new_param)
+        print(f"🆕 Added and enabled {name} parameter.")
+
+# ---------- write parameters ----------
+ensure_active_param("unicodeRanges", uni_bits)
+ensure_active_param("codePageRanges", cp_values)
 
 # ---------- report ----------
-show_panel()
 print("=== Unicode Ranges (OS/2 ulUnicodeRange*) ===")
 for bit, name, pct in sorted(uni_results, key=lambda t: t[0]):
-    mark = "✔" if bit in uni_bits else " "
-    print(f"{bit:3d}  {mark}  {name:42s} : {pct:6.1f}%")
+    mark = "✅" if bit in uni_bits else " "
+    print(f"{bit:3d} {name:42s} : {pct:6.1f}% {mark}")
 
 print("\n=== Code Page Ranges (OS/2 ulCodePageRange*) ===")
 for bit, name, pct in sorted(cp_results, key=lambda t: t[0]):
-    mark = "✔" if bit in cp_bits else " "
-    print(f"{bit:3d}  {mark}  {name:42s} : {pct:6.1f}%")
+    mark = "✅" if bit in cp_bits else " "
+    print(f"{bit:3d} {name:42s} : {pct:6.1f}% {mark}")
 
 print("\nUpdated custom parameters:")
 print("  unicodeRanges  =", uni_bits)
