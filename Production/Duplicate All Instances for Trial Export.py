@@ -5,61 +5,85 @@ import unicodedata
 import re
 
 font = Glyphs.font
-
 if not font:
     print("No font open.")
     raise SystemExit
 
-def ascii_ps_name(s):
+def normalize_name(s):
+    """Simplify a string for consistent comparison."""
+    if not s:
+        return ""
     s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if ord(c) < 128 and not c.isspace())
+    s = re.sub(r"\s+", " ", s.strip().lower())
     return s
 
+def get_family_name(inst):
+    """Return best possible family name string for an instance."""
+    fam = None
+    try:
+        fam = inst.customParameters["familyName"]
+    except Exception:
+        pass
+    if not fam:
+        fam = getattr(inst, "familyName", None)
+    return fam or ""
+
+def is_trial_instance(inst):
+    """Return True if this instance is a trial version."""
+    fam = get_family_name(inst)
+    if "unlicensed trial" in fam.lower():
+        return True
+    try:
+        loc_name = inst.propertyForKey_("familyNames")
+        if isinstance(loc_name, str) and "unlicensed trial" in loc_name.lower():
+            return True
+    except Exception:
+        pass
+    return False
+
 if font.instances:
-    original_count = len(font.instances)
-    
-    for i in range(original_count):
-        instance = font.instances[i]
-        
-        # Skip variable font settings
-        if instance.type == INSTANCETYPEVARIABLE:
-            continue
-        
-        # Create a copy of the instance
-        new_instance = instance.copy()
-        
-        # Get the original family name
-        if instance.customParameters["familyName"]:
-            original_family = instance.customParameters["familyName"]
-        else:
-            original_family = font.familyName
-        
-        # Remove numbers from family name
-        original_family = re.sub(r'\d+', '', original_family).strip()
-        
-        # Set the trial family name
-        trial_family = original_family + " Unlicensed Trial"
-        style_name = new_instance.name or ""
+    all_instances = list(font.instances)
+    created_count = 0
+
+    # Build a normalized registry of all existing instances (family + style)
+    existing_keys = set()
+    for i in all_instances:
+        fam = normalize_name(get_family_name(i))
+        style = normalize_name(i.name)
+        key = f"{fam}::{style}"
+        existing_keys.add(key)
+
+    # Iterate over original (non-trial, non-variable) instances
+    originals = [i for i in all_instances if not is_trial_instance(i) and i.type != INSTANCETYPEVARIABLE]
+
+    for instance in originals:
+        base_family = get_family_name(instance) or font.familyName
+        base_family = re.sub(r'\d+', '', base_family).strip()
+        trial_family = f"{base_family} Unlicensed Trial"
+        style_name = instance.name or ""
         full_name = f"{trial_family} {style_name}".strip()
-        
-        # Clean up multiple spaces
-        full_name = re.sub(r' +', ' ', full_name)
-        trial_family = re.sub(r' +', ' ', trial_family)
-        
-        # Set localized family name
+
+        # Normalized lookup key for the potential trial version
+        trial_key = f"{normalize_name(trial_family)}::{normalize_name(style_name)}"
+
+        if trial_key in existing_keys:
+            continue  # already exists
+
+        # Duplicate and rename
+        new_instance = instance.copy()
         new_instance.setProperty_value_languageTag_("familyNames", trial_family, None)
-        
-        # Set postscript full name
         new_instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
-        
-        # Clean up fontName - replace spaces with hyphens and remove consecutive hyphens
-        font_name = full_name.replace(" ", "-")
-        font_name = re.sub(r'-+', '-', font_name)
+
+        font_name = re.sub(r'-+', '-', full_name.replace(" ", "-"))
         new_instance.fontName = font_name
-        
-        # Add the new instance to the font
+
         font.instances.append(new_instance)
-        
-    print("✅ Duplicated %d instance(s) with 'Unlicensed Trial' family name" % original_count)
+        existing_keys.add(trial_key)
+        created_count += 1
+
+    if created_count:
+        print(f"✅ Created {created_count} new 'Unlicensed Trial' instance(s).")
+    else:
+        print("⚠️ All trial instances already exist — nothing to duplicate.")
 else:
-    print("No instances found")
+    print("No instances found.")
