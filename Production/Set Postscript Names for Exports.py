@@ -50,4 +50,11 @@ for instance in font.instances:
     font_name = re.sub(r'-+', '-', font_name)  # Replace multiple hyphens with single hyphen
     instance.fontName = font_name
 
+    try:
+        instance.customParameters["Export Folder"] = family_name
+    except Exception:
+        # In case CustomParametersProxy behaves differently in some builds:
+        instance.setCustomParameter_forKey_(family_name, "Export Folder")
+        
+
 print("✅ postscriptFullNames set for all exports, using localized family names where available.")
