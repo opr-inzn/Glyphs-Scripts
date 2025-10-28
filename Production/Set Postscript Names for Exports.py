@@ -22,15 +22,17 @@ def ascii_ps_name(s):
     return "".join(c for c in s if ord(c) < 128 and not c.isspace())
 
 
-def sanitize_name(s, for_folder=False):
+def sanitize_name(s, for_folder=False, keep_spaces=False):
     """
     Remove version numbers, LAB tags, etc.
-    Replace spaces with hyphens unless for_folder=True.
+    Replace spaces with hyphens unless for_folder=True or keep_spaces=True.
     """
     s = re.sub(r"(?i)(?:v\d+(?:\.\d+)?|lab\d*|\d+)", "", s)
     s = s.strip()
-    if not for_folder:
+    if not (for_folder or keep_spaces):
         s = re.sub(r"\s+", "-", s)
+    else:
+        s = re.sub(r"\s+", " ", s)
     s = re.sub(r"-+", "-", s)
     return s.strip("-").strip()
 
@@ -57,14 +59,12 @@ for instance in font.instances:
     family_name = re.sub(r"(?i)\bvariable\b", "", family_name).strip()
     style_name = re.sub(r"(?i)\bvariable\b", "", style_name).strip()
 
-    # Base full name
-    full_name = f"{family_name} {style_name}".strip()
-    full_name = re.sub(r" +", " ", full_name)
-    font_name = sanitize_name(full_name)
+    # Base full name (keep spaces, but clean numbers)
+    raw_full_name = f"{family_name} {style_name}".strip()
+    full_name = sanitize_name(raw_full_name, keep_spaces=True)
 
-    # --- Shared setup ---
-    instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
-    instance.fontName = font_name
+    # PostScript font name (no spaces)
+    font_name = sanitize_name(full_name)
 
     if instance.type == INSTANCETYPEVARIABLE:
         # Prefix for variable export
@@ -74,7 +74,8 @@ for instance in font.instances:
 
         # Variable-specific names
         var_family_name = f"{family_name} Variable"
-        var_full_name = f"{family_name} Variable {style_name}".strip()
+        var_full_name = f"{var_family_name} {style_name}".strip()
+        var_full_name = sanitize_name(var_full_name, keep_spaces=True)
         var_ps_name = sanitize_name(var_full_name)
 
         # Family / Full / PS / StyleMap
@@ -90,6 +91,9 @@ for instance in font.instances:
 
     else:
         # Static instance setup
+        instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
+        instance.fontName = font_name
+
         clean_folder_name = sanitize_name(family_name, for_folder=True)
         instance.customParameters["Export Folder"] = clean_folder_name
         instance.customParameters["fileName"] = sanitize_name(f"{font.familyName}-{style_name}")
