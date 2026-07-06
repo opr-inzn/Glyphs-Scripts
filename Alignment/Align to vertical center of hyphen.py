@@ -1,4 +1,4 @@
-# MenuTitle: Align to Hyphen Vertical Center
+# MenuTitle: Align to Vertical Center of Hyphen 
 # -*- coding: utf-8 -*-
 
 def alignHyphen():

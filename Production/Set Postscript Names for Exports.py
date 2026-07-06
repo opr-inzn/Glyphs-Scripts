@@ -1,10 +1,8 @@
 # MenuTitle: Set Postscript Names for Exports
 # -*- coding: utf-8 -*-
 __doc__ = """
-Sets PostScript names for all instances, preferring localized family names.
-Adds VariationsPostScriptNamePrefix for variable fonts.
-Also sets Style Map Family/Style Names and fileName (custom parameter, no numbers, no spaces).
-Cleans Export Folder names of version numbers and LAB tags.
+Updates Localized Family Name, PostScript names, fileNames, and Export Folders for all instances.
+The PostScript FontName is kept identical to the export fileName.
 """
 
 from GlyphsApp import INSTANCETYPEVARIABLE
@@ -17,85 +15,148 @@ if not font:
     raise SystemExit
 
 
-def ascii_ps_name(s):
-    s = unicodedata.normalize("NFKD", s)
-    return "".join(c for c in s if ord(c) < 128 and not c.isspace())
-
+# ---------- helpers ----------
 
 def sanitize_name(s, for_folder=False, keep_spaces=False):
-    """
-    Remove version numbers, LAB tags, etc.
-    Replace spaces with hyphens unless for_folder=True or keep_spaces=True.
-    """
-    s = re.sub(r"(?i)(?:v\d+(?:\.\d+)?|lab\d*|\d+)", "", s)
+    if not s:
+        return ""
+
+    # remove LABxx only when NOT used for folder names
+    if not for_folder:
+        s = re.sub(r"(?i)\bLAB\d{1,3}\b", "", s)
+
+    # normalize accents
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+
+    # replace quotes/underscores
+    s = s.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    s = s.replace("_", "-").replace("'", "")
+
+    # non-alphanumeric → hyphen
+    s = re.sub(r"[^A-Za-z0-9\s-]+", "-", s)
+
+    # spacing rules
     s = s.strip()
-    if not (for_folder or keep_spaces):
-        s = re.sub(r"\s+", "-", s)
-    else:
-        s = re.sub(r"\s+", " ", s)
-    s = re.sub(r"-+", "-", s)
-    return s.strip("-").strip()
+    s = re.sub(r"\s+", " " if (for_folder or keep_spaces) else "-", s)
+    s = re.sub(r"-+", "-", s).strip("-").strip()
+
+    # final cleanup (avoid double spaces)
+    s = re.sub(r"\s{2,}", " ", s)
+
+    return s
 
 
 def get_localized_family(instance):
     """Return localized or fallback family name safely."""
+    fam = None
     if instance.properties:
         for prop in instance.properties:
             if prop.key == "familyNames" and prop.defaultValue:
-                return prop.defaultValue
-    try:
-        if "familyName" in instance.customParameters:
-            return instance.customParameters["familyName"]
-    except Exception:
-        pass
-    return font.familyName
+                fam = prop.defaultValue
+                break
+    if not fam:
+        try:
+            fam = instance.customParameters["familyName"]
+        except Exception:
+            pass
+    return fam or font.familyName or ""
 
+
+def is_trial_instance(instance):
+    fam = get_localized_family(instance)
+    return bool(re.search(r"unlicensed\s*", fam, re.IGNORECASE))
+
+
+def is_variable_instance(instance):
+    fam = get_localized_family(instance)
+    return bool(re.search(r"\bvariable\b", fam, re.IGNORECASE))
+
+
+# ---------- main ----------
+
+updated_trials = 0
+updated_variables = 0
+updated_statics = 0
 
 for instance in font.instances:
+
     family_name = get_localized_family(instance)
     style_name = instance.name or ""
 
-    # Remove redundant “Variable”
-    family_name = re.sub(r"(?i)\bvariable\b", "", family_name).strip()
-    style_name = re.sub(r"(?i)\bvariable\b", "", style_name).strip()
+    # detect
+    is_trial = is_trial_instance(instance)
+    is_variable = instance.type == INSTANCETYPEVARIABLE or is_variable_instance(instance)
 
-    # Base full name (keep spaces, but clean numbers)
-    raw_full_name = f"{family_name} {style_name}".strip()
-    full_name = sanitize_name(raw_full_name, keep_spaces=True)
+    # --- build new base family name (LAB removed automatically) ---
+    base_family = sanitize_name(font.familyName, keep_spaces=True)
 
-    # PostScript font name (no spaces)
-    font_name = sanitize_name(full_name)
+    if is_trial and is_variable:
+        new_family_name = f"{base_family} Unlicensed Variable"
+    elif is_trial:
+        new_family_name = f"{base_family} Unlicensed"
+    elif is_variable:
+        new_family_name = f"{base_family} Variable"
+    else:
+        new_family_name = base_family
 
-    if instance.type == INSTANCETYPEVARIABLE:
-        # Prefix for variable export
-        prefix_base = re.sub(r"[\d\s-]+", "", font.familyName)
+    # full name (LAB removed)
+    full_name = sanitize_name(f"{new_family_name} {style_name}", keep_spaces=True)
+
+    # --- write localized + PS names ---
+    instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
+
+    # -------------------------------------------------------------
+    # Export Folder MUST be based on the GLOBAL FAMILY NAME only,
+    # and MUST keep LABxx → so use for_folder=True
+    # -------------------------------------------------------------
+    instance.customParameters["Export Folder"] = sanitize_name(font.familyName, for_folder=True)
+
+    # fileName logic
+    # Keep family words together in file names: "Aktiv Sans" -> "AktivSans".
+    clean_file_family = re.sub(r"[\s-]+", "", sanitize_name(font.familyName))  # LAB removed
+
+    if is_variable and not is_trial:
+        file_name = f"{clean_file_family}-Variable"
+    elif is_trial and not is_variable:
+        file_name = sanitize_name(f"{clean_file_family}-{style_name}-Unlicensed")
+    elif is_trial and is_variable:
+        file_name = f"{clean_file_family}-Unlicensed-Variable"
+    else:
+        file_name = sanitize_name(f"{clean_file_family}-{style_name}")
+
+    instance.customParameters["fileName"] = file_name
+    instance.fontName = file_name
+
+    # Set localized family name (LAB removed)
+    clean_localized_family = sanitize_name(new_family_name, keep_spaces=True)
+    instance.setProperty_value_languageTag_("familyNames", clean_localized_family, None)
+
+    # --- variable-specific names ---
+    if is_variable:
+        # Remove LAB from the prefix base as well
+        prefix_base = re.sub(r"[\s-]+", "", clean_file_family)  # Use clean_file_family instead of font.familyName
         variable_prefix = f"{prefix_base}Variable"
         instance.setProperty_value_languageTag_("variationsPostScriptNamePrefix", variable_prefix, None)
 
-        # Variable-specific names
-        var_family_name = f"{family_name} Variable"
-        var_full_name = f"{var_family_name} {style_name}".strip()
-        var_full_name = sanitize_name(var_full_name, keep_spaces=True)
-        var_ps_name = sanitize_name(var_full_name)
-
-        # Family / Full / PS / StyleMap
-        instance.setProperty_value_languageTag_("familyNames", var_family_name, None)
-        instance.setProperty_value_languageTag_("postscriptFullNames", var_full_name, None)
-        instance.setProperty_value_languageTag_("styleMapFamilyNames", var_family_name, None)
+        instance.setProperty_value_languageTag_("styleMapFamilyNames", clean_localized_family, None)
         instance.setProperty_value_languageTag_("styleMapStyleNames", style_name, None)
-        instance.setProperty_value_languageTag_("preferredFamilyNames", var_family_name, None)
+        instance.setProperty_value_languageTag_("preferredFamilyNames", clean_localized_family, None)
         instance.setProperty_value_languageTag_("preferredSubfamilyNames", style_name, None)
-
-        # File name (custom parameter)
-        instance.customParameters["fileName"] = sanitize_name(f"{font.familyName}-Variable-{style_name}")
-
+        
+    # count
+    if is_trial and is_variable:
+        updated_trials += 1
+        updated_variables += 1
+    elif is_trial:
+        updated_trials += 1
+    elif is_variable:
+        updated_variables += 1
     else:
-        # Static instance setup
-        instance.setProperty_value_languageTag_("postscriptFullNames", full_name, None)
-        instance.fontName = font_name
+        updated_statics += 1
 
-        clean_folder_name = sanitize_name(family_name, for_folder=True)
-        instance.customParameters["Export Folder"] = clean_folder_name
-        instance.customParameters["fileName"] = sanitize_name(f"{font.familyName}-{style_name}")
 
-print("✅ All PostScript, Style Map, fileName, and Export Folder names set cleanly.")
+print(
+    f"✅ Updated {updated_trials} trial, {updated_variables} variable, and {updated_statics} static instances.\n"
+    f"All familyNames now reflect '{font.familyName}'."
+)

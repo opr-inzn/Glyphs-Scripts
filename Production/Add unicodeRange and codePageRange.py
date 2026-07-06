@@ -181,7 +181,12 @@ uni_bits = [bit for bit, _, pct in uni_results if pct >= UNICODE_THRESHOLD]
 cp_bits  = [bit for bit, _, pct in cp_results  if pct >= CODEPAGE_THRESHOLD]
 
 def codepage_id_for_bit(bit):
-    return CODEPAGES[bit][0].split()[0]
+    """Return Glyphs-compatible token for codePageRanges."""
+    if bit == 29:
+        return "bit 29"  # Macintosh Character Set (US Roman)
+    label = CODEPAGES[bit][0]
+    first = label.split()[0]
+    return first if first.isdigit() else label
 
 cp_values = [codepage_id_for_bit(b) for b in cp_bits]
 
