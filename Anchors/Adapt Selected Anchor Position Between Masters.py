@@ -160,11 +160,12 @@ class AdaptSelectedAnchorPositionBetweenMasters(object):
 
 		message = "Updated %i anchor(s)." % changed
 		if skipped:
-			message += "\n\nSkipped:\n" + "\n".join(skipped[:10])
-			if len(skipped) > 10:
-				message += "\n...and %i more." % (len(skipped) - 10)
+			message += " Skipped %i; see Macro Panel." % len(skipped)
+			print("Skipped:")
+			for skipped_message in skipped:
+				print(skipped_message)
 
-		Message(title="Adapt Anchor Position", message=message)
+		Glyphs.showNotification("Adapt Anchor Position", message)
 
 
 AdaptSelectedAnchorPositionBetweenMasters()
