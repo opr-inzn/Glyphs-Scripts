@@ -1,4 +1,4 @@
-# MenuTitle: Disable Auto Alignment for Components in Selected Glyphs on Current Master
+# MenuTitle: Disable Auto Alignment for Components
 # -*- coding: utf-8 -*-
 __doc__ = """
 Disables automatic alignment for components in the selected glyphs on the current master.

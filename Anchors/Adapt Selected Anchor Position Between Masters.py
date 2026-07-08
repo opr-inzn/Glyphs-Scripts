@@ -43,6 +43,9 @@ class AdaptSelectedAnchorPositionBetweenMasters(object):
 		self.w.target.set(current_index)
 
 		self.w.copyY = CheckBox((120, 80, 255, 22), "Copy Y positions from source", value=False)
+		self.w.cancelButton = Button((155, 108, 80, 24), "Cancel", callback=self.cancel_callback)
+		self.w.cancelButton.getNSButton().setKeyEquivalent_("\x1b")
+		self.w.cancelButton.getNSButton().setKeyEquivalentModifierMask_(0)
 		self.w.applyButton = Button((245, 108, 130, 24), "Apply", callback=self.apply_callback)
 		self.w.setDefaultButton(self.w.applyButton)
 		self.w.open()
@@ -80,6 +83,9 @@ class AdaptSelectedAnchorPositionBetweenMasters(object):
 		if black_width == 0:
 			return None
 		return (anchor.position.x - layer.LSB) / float(black_width)
+
+	def cancel_callback(self, sender):
+		self.w.close()
 
 	def apply_callback(self, sender):
 		source_master = self.masters[self.w.source.get()]
