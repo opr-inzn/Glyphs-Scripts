@@ -5,11 +5,19 @@ from __future__ import print_function, unicode_literals
 __doc__ = """
 Copies the left and right sidebearings of the selected glyphs from one master
 to another. The target master's outlines are not replaced or reshaped; its
-advance width changes as needed to accommodate the copied sidebearings.
+advance width changes as needed to accommodate the copied sidebearings. Local
+layer metrics keys for the left side, right side, and width are also copied.
 """
 
 from GlyphsApp import Glyphs, Message
 from vanilla import Button, PopUpButton, TextBox, Window
+
+
+LOCAL_METRIC_KEY_ATTRIBUTES = (
+	"leftMetricsKey",
+	"rightMetricsKey",
+	"widthMetricsKey",
+)
 
 
 class CopySelectedGlyphSpacingBetweenMasters(object):
@@ -39,7 +47,7 @@ class CopySelectedGlyphSpacingBetweenMasters(object):
 
 		self.w.note = TextBox(
 			(15, 82, 350, 24),
-			"Copies both left and right sidebearings.",
+			"Copies LSB, RSB, and local layer metrics keys.",
 			sizeStyle="small",
 		)
 		self.w.cancelButton = Button((165, 106, 80, 24), "Cancel", callback=self.cancel_callback)
@@ -102,6 +110,10 @@ class CopySelectedGlyphSpacingBetweenMasters(object):
 				source_rsb = source_layer.RSB
 				old_lsb = target_layer.LSB
 				old_rsb = target_layer.RSB
+				source_metric_keys = {
+					attribute: getattr(source_layer, attribute, None)
+					for attribute in LOCAL_METRIC_KEY_ATTRIBUTES
+				}
 
 				glyph.beginUndo()
 				try:
@@ -109,6 +121,8 @@ class CopySelectedGlyphSpacingBetweenMasters(object):
 					# the LSB and adjusts the advance width for the RSB.
 					target_layer.LSB = source_lsb
 					target_layer.RSB = source_rsb
+					for attribute, value in source_metric_keys.items():
+						setattr(target_layer, attribute, value)
 				finally:
 					glyph.endUndo()
 
