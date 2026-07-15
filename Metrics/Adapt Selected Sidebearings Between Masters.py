@@ -1,16 +1,16 @@
-#MenuTitle: Adapt Selected Sidebearings to Space Width
+#MenuTitle: Adapt Selected Sidebearings Between Masters
 # -*- coding: utf-8 -*-
 __doc__ = """
-For selected glyphs, reads the left/right sidebearing relationship from one
-master and applies it to another master. The target layer width is taken from
-the target master's space glyph.
+For selected glyphs, reads the relationship between outline width and the
+left/right sidebearings from one master and applies it to another master while
+keeping the target layer's width unchanged.
 """
 
 from GlyphsApp import Glyphs, Message
 from vanilla import Button, PopUpButton, TextBox, Window
 
 
-class AdaptSelectedSidebearingsToSpaceWidth(object):
+class AdaptSelectedSidebearingsBetweenMasters(object):
 
 	def __init__(self):
 		self.font = Glyphs.font
@@ -38,7 +38,7 @@ class AdaptSelectedSidebearingsToSpaceWidth(object):
 
 		self.w.note = TextBox(
 			(15, 84, 330, 28),
-			"Target width comes from the space glyph in the target master.",
+			"The target glyph's existing width is preserved.",
 			sizeStyle="small",
 		)
 		self.w.applyButton = Button((215, 106, 130, 24), "Apply", callback=self.apply_callback)
@@ -76,20 +76,6 @@ class AdaptSelectedSidebearingsToSpaceWidth(object):
 			)
 			return
 
-		space = self.font.glyphs["space"]
-		if space is None:
-			Message(title="Adapt Sidebearings", message="The font has no space glyph.")
-			return
-
-		space_layer = space.layers[target_master.id]
-		target_width = space_layer.width
-		if target_width <= 0:
-			Message(
-				title="Adapt Sidebearings",
-				message="The target master's space glyph has no usable width.",
-			)
-			return
-
 		glyphs = self.selected_glyphs()
 		if not glyphs:
 			Message(title="Adapt Sidebearings", message="No glyphs selected.")
@@ -113,23 +99,26 @@ class AdaptSelectedSidebearingsToSpaceWidth(object):
 					skipped.append("%s: source sidebearings add up to zero" % glyph.name)
 					continue
 
+				target_width = target_layer.width
 				target_bounds = target_layer.bounds
 				target_black_width = target_bounds.size.width
-				total_target_sb = target_width - target_black_width
-
-				if total_target_sb < 0:
-					skipped.append("%s: target outline is wider than space" % glyph.name)
+				if target_black_width <= 0:
+					skipped.append("%s: target layer has no usable outline" % glyph.name)
 					continue
 
+				# Divide the space available inside the target's existing width in the
+				# same left/right proportion as the source sidebearings.
+				total_target_sb = target_width - target_black_width
 				left_ratio = source_layer.LSB / float(total_source_sb)
 				new_lsb = round(total_target_sb * left_ratio)
-				new_rsb = target_width - target_black_width - new_lsb
+				new_rsb = total_target_sb - new_lsb
 
 				glyph.beginUndo()
 				try:
-					target_layer.width = target_width
 					target_layer.LSB = new_lsb
-					target_layer.RSB = new_rsb
+					# Setting sidebearings can affect the advance width. Restore it last
+					# so this script can never leave the target at a different width.
+					target_layer.width = target_width
 				finally:
 					glyph.endUndo()
 
@@ -161,4 +150,4 @@ class AdaptSelectedSidebearingsToSpaceWidth(object):
 		Message(title="Adapt Sidebearings", message=message)
 
 
-AdaptSelectedSidebearingsToSpaceWidth()
+AdaptSelectedSidebearingsBetweenMasters()
